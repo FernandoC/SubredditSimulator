@@ -1,22 +1,38 @@
 import praw
 import re
 import random
+from multiprocessing.dummy import Pool as ThreadPool
+from functools import partial
+
+THREAD_SIZE = 50
+SUBREDDIT_NAME = "pics"
 
 
 def main():
     generator = MarkovChain()
     r = praw.Reddit(user_agent="Reddit_Json")
-    submissions = r.get_subreddit('The_Donald').get_top_from_year(limit=50)
-    for submission in submissions:
-        print submission.title
-        flat_comments = praw.helpers.flatten_tree(submission.comments)
-        for comment in flat_comments:
-            if hasattr(comment, "body"):
-                generator.parse_text(comment.body)
+    submissions = r.get_subreddit(SUBREDDIT_NAME).get_top_from_month(limit=50)
+    pool = ThreadPool(THREAD_SIZE)  # Creates the thread pool
+
+    # Creates an function that extends parse_submission with generator param already filled in
+    parse_submission_partial = partial(parse_submission, generator)
+
+    pool.map(parse_submission_partial, submissions)
+
+    pool.close()
+    pool.join()
 
     print "\n\n\n******* These are the generated sentences *******"
     for x in range(0, 100):
         print generator.generate_sentence()
+
+
+def parse_submission(generator, submission):
+    print submission.title
+    flat_comments = praw.helpers.flatten_tree(submission.comments)
+    for comment in flat_comments:
+        if hasattr(comment, "body"):
+            generator.parse_text(comment.body)
 
 
 class MarkovChain:
@@ -26,6 +42,7 @@ class MarkovChain:
     def __init__(self):
         self.dictionary = {}
 
+    # Adds a link between two words that can later be referenced when constructing a sentence
     def add_word_connection(self, first_word, second_word):
         # creates a new edge if it does not currently exist
         if first_word not in self.dictionary:
@@ -33,12 +50,14 @@ class MarkovChain:
         # append it to the edge list
         self.dictionary[first_word].append(second_word)
 
+    # Tokenizes a sentence
     def parse_text(self, text):
         if text is "":
             assert 'Trying to parse an empty set of text'
         tokens = re.findall(self.accepted_token_regex, text)
         self.make_connections(tokens)
 
+    # Makes word connections from a tokenized word list.
     def make_connections(self, tokens):
         if len(tokens) < 2:
             return
