@@ -5,19 +5,19 @@ from multiprocessing.dummy import Pool as ThreadPool
 from functools import partial
 
 THREAD_SIZE = 50
-SUBREDDIT_NAME = "pics"
+SUBREDDIT_NAME = "oculus"
 
 
 def main():
     generator = MarkovChain()
-    r = praw.Reddit(user_agent="Reddit_Json")
-    submissions = r.get_subreddit(SUBREDDIT_NAME).get_top_from_month(limit=50)
+    r = praw.Reddit(client_id="INSERT_YOUR_CLIENT_ID", client_secret="INSERT_YOUR_CLIENT_SECRET", user_agent="INSERT YOUR USER AGENT")
+    submissions_ids = r.subreddit(SUBREDDIT_NAME).top(limit=500)
     pool = ThreadPool(THREAD_SIZE)  # Creates the thread pool
 
     # Creates an function that extends parse_submission with generator param already filled in
     parse_submission_partial = partial(parse_submission, generator)
 
-    pool.map(parse_submission_partial, submissions)
+    pool.map(parse_submission_partial, submissions_ids)
 
     pool.close()
     pool.join()
@@ -27,12 +27,12 @@ def main():
         print generator.generate_sentence()
 
 
-def parse_submission(generator, submission):
-    print submission.title
-    flat_comments = praw.helpers.flatten_tree(submission.comments)
-    for comment in flat_comments:
-        if hasattr(comment, "body"):
-            generator.parse_text(comment.body)
+def parse_submission(generator, submission_id):
+    try:
+        for top_level_comment in submission_id.comments:
+            generator.parse_text(top_level_comment.body)
+    except AttributeError as e:
+        print e
 
 
 class MarkovChain:
